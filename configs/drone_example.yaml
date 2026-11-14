@@ -1,0 +1,33 @@
+# Same pipeline, drone imagery: aerialdetect run configs/drone_example.yaml
+#
+# The only differences from the NAIP config are the `source` block and (optionally) the AOI.
+# The orthomosaic's native GSD (e.g. 0.03 m) is read from the file and each tile is resampled
+# to model.gsd, so the NAIP-trained model works as-is. Once you have labelled drone chips,
+# fine-tune further at a finer GSD and change model.gsd to match.
+aoi: {}                  # empty = use the orthomosaic footprint as the study area
+
+source:
+  type: drone
+  paths:
+    - data/drone/odm_orthophoto.tif      # OpenDroneMap / Pix4D / DroneDeploy GeoTIFF export
+
+model:
+  weights: runs/xview_naip/weights/best.pt
+  gsd: 0.3
+
+detect:
+  tile_px: 640
+  overlap_px: 128
+  bands: [1, 2, 3]       # drone orthos are usually RGBA; band 4 (alpha) is skipped
+  min_area_m2: {car: 4, building: 15}
+  max_area_m2: {car: 30}
+
+analysis:
+  tracts:
+    enabled: false        # drone AOIs are usually smaller than a tract
+  parking:
+    enabled: true
+    vehicle_classes: [car, truck_bus]
+
+output:
+  dir: outputs/drone_site
