@@ -19,6 +19,12 @@ AERIAL_AUGMENT: dict[str, Any] = {
     "mosaic": 1.0,
 }
 
+# Ultralytics defaults to deterministic=True, which forces slow, memory-hungry deterministic kernels.
+# On a 6 GB GTX 1660 Super (YOLO11s-OBB, DOTA) that meant batch 3 at ~2 img/s spilling into shared
+# RAM, versus batch 8 at ~16 img/s in 3.8 GB with it off. Pass --set deterministic=True if you
+# need bit-exact reruns.
+TRAIN_DEFAULTS: dict[str, Any] = {"deterministic": False}
+
 
 def train(
     data: str | Path,
@@ -39,7 +45,7 @@ def train(
     """
     from ultralytics import YOLO
 
-    args = {**AERIAL_AUGMENT, **overrides}
+    args = {**AERIAL_AUGMENT, **TRAIN_DEFAULTS, **overrides}
     yolo = YOLO(model)
     yolo.train(data=str(data), epochs=epochs, imgsz=imgsz, batch=batch, device=device,
                project=str(Path(project).resolve()), name=name, **args)

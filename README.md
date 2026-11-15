@@ -37,7 +37,7 @@ The tests use synthetic rasters and a fake detector, so they need no data, no ne
 | Dataset | Labels | GSD | Notes |
 |---|---|---|---|
 | **xView** (recommended for NAIP) | ~1M axis-aligned boxes, 60 classes | 0.3 m | Register at xviewdataset.org and download `train_images` + `xView_train.geojson`. License: CC BY-NC-SA 4.0. |
-| **DOTA v1** | Oriented boxes, 15 classes | mixed (≈0.1–4.5 m) | Ultralytics downloads and converts it automatically (`DOTAv1.yaml`). Academic use only. |
+| **DOTA v1** | Oriented boxes, 15 classes | mixed (≈0.1–4.5 m) | No registration: `aerialdetect prep-dota` downloads it (~2 GB) and cuts it into chips. No building class. Academic use only. |
 
 **Matching GSD matters most.** NAIP is 0.6 m in most years. At that size a car is only about 7 × 3 px, which is too
 small for a detector to see reliably. The recommended recipe takes xView at 0.3 m, **degrades it to look like 0.6 m**,
@@ -53,6 +53,20 @@ The classes collapse to `car, truck_bus, building, aircraft, boat, storage_tank`
 [configs/xview_classes.yaml](configs/xview_classes.yaml) to change them. If your NAIP state/year is natively
 0.3 m, drop `--degrade-gsd`.
 
+**No xView? Use DOTA.** Ultralytics' `yolo11s-obb.pt` is already trained on DOTA, so you can skip
+training: [configs/naip_dota.yaml](configs/naip_dota.yaml) uses it directly, with DOTA's class names
+(`small vehicle`, `large vehicle`) and no building analysis (DOTA has no building class).
+
+```powershell
+aerialdetect run configs/naip_dota.yaml
+```
+
+Upsampling NAIP to 0.2 m (`model.gsd: 0.2`) worked best on Tempe 2025: about 2.3× the cars found at
+0.3 m, with few false positives. A 10-epoch fine-tune on native-resolution DOTA chips did *worse* on
+NAIP than the stock model. To fine-tune anyway, `aerialdetect prep-dota` downloads DOTA (~2 GB) and cuts
+it into 640 px chips at native resolution (`data/dota_split640/data.yaml`); blurring them to look like
+NAIP first is the more promising route.
+
 ### 2. Fine-tune YOLO
 
 ```powershell
@@ -63,8 +77,11 @@ aerialdetect train --data DOTA8.yaml --model yolo11n-obb.pt --epochs 3 --name sm
 aerialdetect train --data data/xview_yolo_naip/data.yaml --model yolo11s.pt --epochs 100 --name xview_naip --device 0
 
 # Oriented boxes from DOTA (planes, ships, storage tanks, small/large vehicles)
-aerialdetect train --data DOTAv1.yaml --model yolo11s-obb.pt --epochs 100 --name dota_obb --set degrees=180
+aerialdetect train --data data/dota_split640/data.yaml --model yolo11s-obb.pt --epochs 100 --name dota_obb --device 0 --set degrees=180
 ```
+
+On a 6 GB card (e.g. GTX 1660 Super) add `--batch -1` to let Ultralytics pick the largest batch that fits.
+GTX 16-series cards train in full precision (Ultralytics disables AMP on them), so they use more memory.
 
 The default augmentations are tuned for aerial imagery: vertical flips on, scale jitter limited so GSD stays
 consistent. See [train.py](src/aerialdetect/train.py). Any Ultralytics argument can be passed with `--set key=value`.

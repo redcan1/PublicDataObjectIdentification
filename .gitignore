@@ -16,3 +16,6 @@ runs/
 *.aux.xml
 *.gpkg-shm
 *.gpkg-wal
+
+# OSMnx HTTP cache
+cache/
