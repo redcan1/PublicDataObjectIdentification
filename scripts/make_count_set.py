@@ -54,7 +54,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", required=True, help="run dir pattern with {year}")
     ap.add_argument("--years", type=int, nargs="+", required=True)
-    ap.add_argument("--imagery", default="data/cache/imagery/naip_{year}_*.tif")
+    ap.add_argument("--imagery", default=None, help="raster glob with {year}; default: the run's summary.json")
     ap.add_argument("--out", required=True)
     ap.add_argument("--n-lots", type=int, default=15)
     ap.add_argument("--min-m2", type=float, default=700)
@@ -73,7 +73,10 @@ def main() -> None:
     manifest = {}
     for k, (lid, year) in enumerate(jobs):
         cid = f"c{k + 1:02d}"
-        tif = glob.glob(a.imagery.format(year=year))
+        if a.imagery:
+            tif = glob.glob(a.imagery.format(year=year))
+        else:
+            tif = json.loads((Path(a.runs.format(year=year)) / "summary.json").read_text())["rasters"]
         assert len(tif) == 1, (year, tif)
         with rasterio.open(tif[0]) as src:
             lot = chosen[chosen["lot_id"] == lid].to_crs(src.crs).geometry.iloc[0]

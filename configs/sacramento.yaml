@@ -34,7 +34,7 @@ analysis:
     footprint_classes: []
   parking:
     enabled: true
-    lots_path: null      # OpenStreetMap amenity=parking (current OSM, same lots for every year)
+    lots_path: data/lots/sacramento_osm_parking.gpkg   # OSM amenity=parking as used in the first runs (lot_ids match labels/sacramento)
     vehicle_classes: [small vehicle, large vehicle]
     m2_per_stall: 30
     # Lot type = City of Sacramento zoning at the lot's centre (current zoning, applied to every year).
