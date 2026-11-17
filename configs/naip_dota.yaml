@@ -26,7 +26,10 @@ detect:
   tile_px: 640          # = prep-dota --crop-px = train --imgsz
   overlap_px: 128
   bands: [1, 2, 3]      # NAIP is R,G,B,NIR
-  min_area_m2: {small vehicle: 4}
+  # classes: [small vehicle, large vehicle]   # optional keep-list; omit to keep every DOTA class
+  # plane >= 100 m2: real light aircraft are ~60-100+ m2. In Tempe 2025 all 72 "planes" were 8-40 m2 rooftop
+  # clutter (none overlapped a car), so this removes them while keeping real aircraft near airports.
+  min_area_m2: {small vehicle: 4, plane: 100}
   max_area_m2: {small vehicle: 30}
 
 analysis:

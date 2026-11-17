@@ -154,14 +154,18 @@ results to `outputs/tempe_dota/`. Open `results.gpkg` in QGIS or ArcGIS Pro. To 
 | Config | Use it for |
 |---|---|
 | [configs/naip_dota.yaml](configs/naip_dota.yaml) | NAIP with the pretrained DOTA model (start here) |
+| [configs/naip_dota_2023.yaml](configs/naip_dota_2023.yaml) | The same on Tempe's 2023 NAIP (0.3 m, flown during the fall semester) |
 | [configs/naip_example.yaml](configs/naip_example.yaml) | NAIP with your own xView-trained model (`runs/xview_naip/weights/best.pt`) |
 | [configs/drone_example.yaml](configs/drone_example.yaml) | A drone orthomosaic or other local GeoTIFF |
 
 Key settings: `aoi` (the area), `source` (NAIP year or file paths), `model.weights`, `model.gsd` (the GSD
-tiles are resampled to), `model.conf` (confidence threshold), and the class lists under `analysis`.
+tiles are resampled to), `model.conf` (confidence threshold), `detect.classes` (optional list of classes to keep),
+`detect.min_area_m2` / `max_area_m2` (per-class size limits), and the class lists under `analysis`.
 
-For the pretrained DOTA model on NAIP, `model.gsd: 0.2` (3× upsampling) worked best on Tempe 2025. It found
-about 2.3× as many cars as 0.3 m, with few false positives. Lowering `conf` below 0.25 mostly adds false
+For the pretrained DOTA model, set `model.gsd` to about a third to a half of the imagery's resolution. On
+0.6 m NAIP (Tempe 2025), `0.2` (3× upsampling) worked best and found about 2.3× as many cars as `0.3`. On 0.3 m
+NAIP (Tempe 2023), `0.15` worked best: `0.2` missed whole rows of tightly parked cars. Check
+`properties.gsd` of the NAIP year you use, since many states switched to 0.3 m in 2022 or later. Lowering `conf` below 0.25 mostly adds false
 positives such as empty spaces and shadows.
 
 ### Commands
@@ -259,8 +263,12 @@ propy arcgis/import_to_gdb.py outputs/tempe_dota/results.gpkg outputs/tempe_dota
   Tree canopy also hides cars.
 - **0.6 m imagery is coarse.** A car is about 7 × 3 pixels, so some are missed, especially dark cars and cars
   in shadow.
-- **False positives occur in some classes.** The DOTA model labelled some roofs and shapes as planes in an
-  area with no airport. Use `min_area_m2` / `max_area_m2` in the config, or ignore classes you don't need.
+- **False positives occur in some classes.** On Tempe 2025 the DOTA model labelled 72 car-sized (8–40 m²)
+  rooftop objects as planes. `naip_dota.yaml` sets `min_area_m2: {plane: 100}`, which removes them but keeps
+  real aircraft. Use `detect.classes` to keep only the classes you need.
+- **Recall in packed lots is limited.** Even on 0.3 m imagery the stock model finds roughly half the cars in
+  full, tightly packed lots, so occupancy is an underestimate. Tempe 2023 (a weekday in September) gives
+  4.7% overall against 2.5% for summer 2025.
 - **Axis-aligned boxes overstate building footprints**, especially for rotated buildings. Use an OBB or
   segmentation model if footprint area matters.
 - **Area-based parking capacity is rough.** Use OSM `capacity` tags or your own stall counts when you have them.

@@ -26,6 +26,7 @@ DEFAULTS: dict[str, Any] = {
         "edge_margin_px": 2.0,
         "nms_iou": 0.5,
         "nms_ios": 0.8,
+        "classes": None,    # optional keep-list of class names; None = keep every class
         "min_area_m2": {},  # optional per-class size filter, e.g. {car: 4}
         "max_area_m2": {},
     },
