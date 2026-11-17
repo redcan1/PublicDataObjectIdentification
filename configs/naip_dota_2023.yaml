@@ -1,0 +1,54 @@
+# Same as naip_dota.yaml, but on NAIP 2023:  aerialdetect run configs/naip_dota_2023.yaml
+#
+# Arizona's 2023 NAIP was flown on 2023-09-15 (a Friday in the fall semester) at 0.3 m, so ASU's lots are
+# in use and cars are twice as sharp as in the 2025 imagery (2025-06-07, 0.6 m, summer break).
+#
+# Same as naip_example.yaml except for the class names. DOTA calls cars "small vehicle" and
+# trucks/buses "large vehicle", and has no building class, so the tract analysis only counts vehicles.
+#
+# Weights: Ultralytics' yolo11s-obb.pt is already trained on DOTA (at multiple scales) and downloads
+# automatically. On 2025 NAIP over Tempe it beat a 10-epoch fine-tune on native-resolution DOTA chips
+# (prep-dota + train), which found fewer cars. Fine-tune only with NAIP-like (blurred) chips.
+aoi:
+  bbox: [-111.945, 33.410, -111.925, 33.425]   # min_lon, min_lat, max_lon, max_lat
+
+source:
+  type: naip
+  year: 2023            # 2023-09-15, 0.3 m
+
+model:
+  weights: yolo11s-obb.pt
+  # 2023 NAIP is 0.3 m, so it needs a finer GSD than the 0.6 m years (0.2 in naip_dota.yaml). Tested on this
+  # AOI (small-vehicle count): gsd 0.1 -> 1753, 0.15 -> 1709, 0.2 -> 1268, 0.3 -> 386. At 0.2 whole rows of
+  # tightly parked cars were missed; 0.15 finds them with few false positives, at half the cost of 0.1.
+  gsd: 0.15
+  conf: 0.25
+  device: null          # 0 = first GPU, "cpu" to force CPU
+
+detect:
+  tile_px: 640          # = prep-dota --crop-px = train --imgsz
+  overlap_px: 128
+  bands: [1, 2, 3]      # NAIP is R,G,B,NIR
+  # classes: [small vehicle, large vehicle]   # optional keep-list; omit to keep every DOTA class
+  # plane >= 100 m2: real light aircraft are ~60-100+ m2. In Tempe 2025 all 72 "planes" were 8-40 m2 rooftop
+  # clutter (none overlapped a car), so this removes them while keeping real aircraft near airports.
+  min_area_m2: {small vehicle: 4, plane: 100}
+  max_area_m2: {small vehicle: 30}
+
+analysis:
+  tracts:
+    enabled: true
+    year: 2023
+    count_classes: [small vehicle, large vehicle]
+    footprint_classes: []   # DOTA has no buildings
+  parking:
+    enabled: true
+    lots_path: null      # null = OpenStreetMap amenity=parking
+    vehicle_classes: [small vehicle, large vehicle]
+    m2_per_stall: 30
+
+output:
+  dir: outputs/tempe_dota_2023
+  gpkg: results.gpkg
+
+cache_dir: data/cache

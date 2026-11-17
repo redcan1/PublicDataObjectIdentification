@@ -34,7 +34,20 @@ def detect_step(rasters: list[Path], predictor: Predictor, names: dict[int, str]
         for r in rasters
     ]
     dets = add_measurements(merge_detections(parts, detect_cfg["nms_iou"], detect_cfg["nms_ios"]))
+    dets = filter_classes(dets, detect_cfg.get("classes"))
     return filter_by_size(dets, detect_cfg.get("min_area_m2") or {}, detect_cfg.get("max_area_m2") or {})
+
+
+def filter_classes(dets: gpd.GeoDataFrame, classes: list[str] | None) -> gpd.GeoDataFrame:
+    """Keep only the listed class names (None = keep all). Drops classes you don't need or don't trust."""
+    if dets.empty or classes is None:
+        return dets
+    unknown = set(classes) - set(dets["class_name"])
+    if unknown:
+        log.debug("class filter: no detections for %s", sorted(unknown))
+    keep = dets["class_name"].isin(classes)
+    log.info("class filter removed %d detection(s)", int((~keep).sum()))
+    return dets[keep].reset_index(drop=True)
 
 
 def filter_by_size(dets: gpd.GeoDataFrame, min_area: dict[str, float], max_area: dict[str, float]) -> gpd.GeoDataFrame:

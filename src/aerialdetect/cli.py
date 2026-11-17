@@ -46,6 +46,15 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--overlap-px", type=int, default=64)
     s.add_argument("--val-fraction", type=float, default=0.1)
 
+    s = sub.add_parser("prep-dota", help="download DOTA v1 and cut it into native-resolution OBB chips")
+    s.add_argument("--raw", default="data/DOTAv1", help="where DOTAv1.zip is (or gets) extracted")
+    s.add_argument("--out", default="data/dota_split640")
+    s.add_argument("--crop-px", type=int, default=640, help="chip size; train with --imgsz equal to this")
+    s.add_argument("--gap-px", type=int, default=128, help="overlap between neighbouring chips")
+    s.add_argument("--keep-background", type=float, default=0.1,
+                   help="fraction of object-free chips to keep (1 = all)")
+    s.add_argument("--no-download", action="store_true", help="fail instead of downloading if --raw is empty")
+
     s = sub.add_parser("train", help="fine-tune YOLO")
     s.add_argument("--data", required=True, help="dataset YAML (prep-xview output, DOTAv1.yaml, DOTA8.yaml...)")
     s.add_argument("--model", default="yolo11s.pt", help="starting weights, e.g. yolo11s.pt or yolo11s-obb.pt")
@@ -112,6 +121,12 @@ def main(argv: list[str] | None = None) -> None:
                                   chip_gsd=args.chip_gsd, degrade_gsd=args.degrade_gsd, tile_px=args.tile_px,
                                   overlap_px=args.overlap_px, val_fraction=args.val_fraction)
         print(data_yaml)
+
+    elif args.cmd == "prep-dota":
+        from .datasets.dota import prep_dota
+
+        print(prep_dota(args.raw, args.out, crop_px=args.crop_px, gap_px=args.gap_px,
+                        download=not args.no_download, keep_background=args.keep_background))
 
     elif args.cmd == "train":
         from .train import train

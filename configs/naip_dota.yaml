@@ -1,0 +1,51 @@
+# NAIP run with a DOTA-trained model:  aerialdetect run configs/naip_dota.yaml
+#
+# Same as naip_example.yaml except for the class names. DOTA calls cars "small vehicle" and
+# trucks/buses "large vehicle", and has no building class, so the tract analysis only counts vehicles.
+#
+# Weights: Ultralytics' yolo11s-obb.pt is already trained on DOTA (at multiple scales) and downloads
+# automatically. On 2025 NAIP over Tempe it beat a 10-epoch fine-tune on native-resolution DOTA chips
+# (prep-dota + train), which found fewer cars. Fine-tune only with NAIP-like (blurred) chips.
+aoi:
+  bbox: [-111.945, 33.410, -111.925, 33.425]   # min_lon, min_lat, max_lon, max_lat
+
+source:
+  type: naip
+  year: null            # null = most recent year that fully covers the AOI
+
+model:
+  weights: yolo11s-obb.pt
+  # NAIP (0.6 m) is upsampled 3x to this GSD. Tested on Tempe NAIP 2025 (small-vehicle count):
+  # gsd 0.2 -> 896, 0.3 -> 385, 0.4 -> 132, 0.5 -> 25. At 0.2 most visible cars are found with few
+  # false positives; conf 0.1 roughly doubles the count but adds mostly empty stalls and shadows.
+  gsd: 0.2
+  conf: 0.25
+  device: null          # 0 = first GPU, "cpu" to force CPU
+
+detect:
+  tile_px: 640          # = prep-dota --crop-px = train --imgsz
+  overlap_px: 128
+  bands: [1, 2, 3]      # NAIP is R,G,B,NIR
+  # classes: [small vehicle, large vehicle]   # optional keep-list; omit to keep every DOTA class
+  # plane >= 100 m2: real light aircraft are ~60-100+ m2. In Tempe 2025 all 72 "planes" were 8-40 m2 rooftop
+  # clutter (none overlapped a car), so this removes them while keeping real aircraft near airports.
+  min_area_m2: {small vehicle: 4, plane: 100}
+  max_area_m2: {small vehicle: 30}
+
+analysis:
+  tracts:
+    enabled: true
+    year: 2023
+    count_classes: [small vehicle, large vehicle]
+    footprint_classes: []   # DOTA has no buildings
+  parking:
+    enabled: true
+    lots_path: null      # null = OpenStreetMap amenity=parking
+    vehicle_classes: [small vehicle, large vehicle]
+    m2_per_stall: 30
+
+output:
+  dir: outputs/tempe_dota
+  gpkg: results.gpkg
+
+cache_dir: data/cache
