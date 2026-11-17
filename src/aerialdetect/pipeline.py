@@ -73,11 +73,18 @@ def tracts_step(dets: gpd.GeoDataFrame, aoi: gpd.GeoDataFrame, cfg: dict[str, An
                            cfg["count_classes"], cfg["footprint_classes"])
 
 
-def parking_step(dets: gpd.GeoDataFrame, aoi: gpd.GeoDataFrame, cfg: dict[str, Any]) -> gpd.GeoDataFrame:
+def parking_step(dets: gpd.GeoDataFrame, aoi: gpd.GeoDataFrame, cfg: dict[str, Any],
+                 cache_dir: str | Path | None = None) -> gpd.GeoDataFrame:
     from .analysis.parking import load_osm_parking, parking_occupancy
 
     lots = gpd.read_file(cfg["lots_path"]) if cfg.get("lots_path") else load_osm_parking(aoi)
-    return parking_occupancy(dets, lots, cfg["vehicle_classes"], aoi=aoi, m2_per_stall=cfg["m2_per_stall"])
+    out = parking_occupancy(dets, lots, cfg["vehicle_classes"], aoi=aoi, m2_per_stall=cfg["m2_per_stall"])
+    zcfg = cfg.get("zoning")
+    if zcfg and (zcfg.get("url") or zcfg.get("path")):
+        from .analysis.zoning import classify_lots, load_zones
+
+        out = classify_lots(out, load_zones(zcfg, aoi, cache_dir), zcfg["field"], zcfg.get("groups") or {})
+    return out
 
 
 def run(cfg: dict[str, Any], predictor: Predictor | None = None) -> dict[str, Path]:
@@ -87,7 +94,8 @@ def run(cfg: dict[str, Any], predictor: Predictor | None = None) -> dict[str, Pa
     aoi_cfg = cfg.get("aoi") or {}
     aoi = load_aoi(aoi_cfg.get("bbox"), aoi_cfg.get("path")) if (aoi_cfg.get("bbox") or aoi_cfg.get("path")) else None
 
-    rasters = build_source(cfg["source"]).fetch(aoi, Path(cfg["cache_dir"]) / "imagery")
+    source = build_source(cfg["source"])
+    rasters = source.fetch(aoi, Path(cfg["cache_dir"]) / "imagery")
     footprints = raster_footprints(rasters)
     if aoi is None:  # e.g. a drone orthomosaic: the imagery defines the study area
         aoi = gpd.GeoDataFrame({"name": ["aoi"]}, geometry=[footprints.union_all()], crs=footprints.crs)
@@ -110,7 +118,7 @@ def run(cfg: dict[str, Any], predictor: Predictor | None = None) -> dict[str, Pa
     if analysis["tracts"]["enabled"]:
         layers["tract_density"] = tracts_step(dets, aoi, analysis["tracts"], cfg["cache_dir"])
     if analysis["parking"]["enabled"]:
-        layers["parking_lots"] = parking_step(dets, aoi, analysis["parking"])
+        layers["parking_lots"] = parking_step(dets, aoi, analysis["parking"], cfg["cache_dir"])
 
     gpkg = write_gpkg(out_dir / cfg["output"]["gpkg"], layers)
     outputs = {"gpkg": gpkg}
@@ -122,6 +130,7 @@ def run(cfg: dict[str, Any], predictor: Predictor | None = None) -> dict[str, Pa
 
     summary = {
         "rasters": [str(r) for r in rasters],
+        "imagery": getattr(source, "metadata", {}),
         "native_gsd_m": sorted(set(dets["native_gsd"].tolist())) if not dets.empty else [],
         "model_gsd_m": cfg["model"]["gsd"],
         "n_detections": int(len(dets)),

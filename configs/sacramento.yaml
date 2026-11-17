@@ -1,0 +1,55 @@
+# Sacramento parking before / during / after COVID.
+#   aerialdetect naip-dates --bbox -121.512 38.566 -121.470 38.590
+#   aerialdetect run configs/sacramento.yaml --set source.year=2020 --set output.dir=outputs/sacramento_2020
+#
+# Downtown (Capitol, state offices) plus Midtown apartments. Every NAIP cycle here is a weekday in late June
+# at 0.6 m, so years compare without season or resolution confounds:
+#   2016-06-20/21 Mon/Tue (pre) | 2020-06-17 Wed (pandemic) | 2022-06-21 Tue | 2024-06-26 Wed
+# (2018 is a Saturday; skip it.)
+aoi:
+  bbox: [-121.512, 38.566, -121.470, 38.590]   # min_lon, min_lat, max_lon, max_lat
+
+source:
+  type: naip
+  year: 2024            # override per run with --set source.year=...
+
+model:
+  weights: yolo11s-obb.pt
+  gsd: 0.2              # 3x upsampling of 0.6 m NAIP; tuned on Tempe 2025 (see naip_dota.yaml)
+  conf: 0.25
+  device: null
+
+detect:
+  tile_px: 640
+  overlap_px: 128
+  bands: [1, 2, 3]
+  min_area_m2: {small vehicle: 4, plane: 100}
+  max_area_m2: {small vehicle: 30}
+
+analysis:
+  tracts:
+    enabled: true
+    year: 2020           # 2020 tract boundaries for every year, so tracts line up across runs
+    count_classes: [small vehicle, large vehicle]
+    footprint_classes: []
+  parking:
+    enabled: true
+    lots_path: null      # OpenStreetMap amenity=parking (current OSM, same lots for every year)
+    vehicle_classes: [small vehicle, large vehicle]
+    m2_per_stall: 30
+    # Lot type = City of Sacramento zoning at the lot's centre (current zoning, applied to every year).
+    zoning:
+      url: https://services5.arcgis.com/54falWtcpty3V47Z/arcgis/rest/services/Zoning/FeatureServer/0
+      field: BASE_ZONE
+      groups:
+        downtown_core: [C-3]                                   # Central Business District: state offices, towers
+        residential: [R-1B, R-2B, R-3A, R-4, R-4A, R-5, RMX]
+        commercial: [C-1, C-2, C-4]
+        mixed_office_residential: [RO, OB]
+        industrial: [M-1, M-2]
+
+output:
+  dir: outputs/sacramento_2024
+  gpkg: results.gpkg
+
+cache_dir: data/cache

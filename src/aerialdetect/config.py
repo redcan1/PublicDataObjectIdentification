@@ -46,9 +46,22 @@ def deep_merge(base: dict, override: dict) -> dict:
     return out
 
 
-def load_config(path: str | Path) -> dict[str, Any]:
+def set_dotted(cfg: dict, key: str, value: Any) -> None:
+    """``set_dotted(cfg, "source.year", 2020)`` sets ``cfg["source"]["year"] = 2020``."""
+    *parents, last = key.split(".")
+    node = cfg
+    for k in parents:
+        node = node.setdefault(k, {})
+        if not isinstance(node, dict):
+            raise ValueError(f"config: {key!r} goes through a non-mapping value")
+    node[last] = value
+
+
+def load_config(path: str | Path, overrides: list[tuple[str, Any]] | None = None) -> dict[str, Any]:
     with open(path, encoding="utf-8") as f:
         user = yaml.safe_load(f) or {}
+    for k, v in overrides or []:
+        set_dotted(user, k, v)
     cfg = deep_merge(DEFAULTS, user)
     if not cfg["model"]["weights"]:
         raise ValueError("config: model.weights is required")
