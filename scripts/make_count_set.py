@@ -60,12 +60,23 @@ def main() -> None:
     ap.add_argument("--min-m2", type=float, default=700)
     ap.add_argument("--max-m2", type=float, default=4500)
     ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--exclude-labels", nargs="*", default=[], help="label dirs whose lots are skipped")
+    ap.add_argument("--lots", type=int, nargs="*", default=None, help="use exactly these lot_ids")
+    ap.add_argument("--types", nargs="*", default=None, help="only these lot types")
     a = ap.parse_args()
 
     out = Path(a.out)
     (out / "crops").mkdir(parents=True, exist_ok=True)
     lots = gpd.read_file(Path(a.runs.format(year=a.years[0])) / "results.gpkg", layer="parking_lots")
-    chosen = pick_lots(lots, a.n_lots, a.seed, a.min_m2, a.max_m2)
+    skip = {m["lot_id"] for d in a.exclude_labels
+            for m in json.loads((Path(d) / "manifest.json").read_text(encoding="utf-8")).values()}
+    lots = lots[~lots["lot_id"].isin(skip)]
+    if a.types:
+        lots = lots[lots["lot_type"].isin(a.types)]
+    if a.lots:
+        chosen = lots.set_index("lot_id", drop=False).loc[a.lots]
+    else:
+        chosen = pick_lots(lots, a.n_lots, a.seed, a.min_m2, a.max_m2)
     print("lots:", chosen[["lot_id", "lot_type", "area_m2"]].to_string(index=False))
 
     jobs = [(int(lid), y) for lid in chosen["lot_id"] for y in a.years]
