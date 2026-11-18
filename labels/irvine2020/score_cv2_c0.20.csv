@@ -1,0 +1,13 @@
+crop,lot_id,lot_type,year,hand,model,matched,model_lot_n,capacity_est,unsure
+c01,4,retail,2020,11,9,9,14,307,False
+c02,86,office_rnd,2018,45,54,42,75,134,False
+c03,38,retail,2020,193,221,175,316,511,False
+c04,90,center_office,2018,101,87,58,138,323,False
+c05,86,office_rnd,2020,7,6,5,12,134,False
+c06,38,retail,2018,91,86,64,147,511,True
+c07,40,office_rnd,2020,97,107,84,166,372,False
+c08,40,office_rnd,2018,72,88,58,157,372,False
+c09,7,center_office,2020,68,73,64,93,233,False
+c10,4,retail,2018,85,105,73,174,307,False
+c11,7,center_office,2018,141,159,113,227,233,True
+c12,90,center_office,2020,34,19,18,30,323,False

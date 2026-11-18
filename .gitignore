@@ -6,7 +6,9 @@ venv/
 .pytest_cache/
 
 # Data, model runs and outputs are large / regenerable
-data/
+data/*
+# fixed parking-lot snapshots: lot_ids must match labels/
+!data/lots/
 outputs/
 runs/
 *.pt
@@ -19,3 +21,6 @@ runs/
 
 # OSMnx HTTP cache
 cache/
+
+# fine-tuned weights are kept, via Git LFS (see .gitattributes)
+!models/*.pt

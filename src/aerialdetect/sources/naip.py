@@ -9,6 +9,7 @@ anonymously; URLs are signed by the ``planetary-computer`` package.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from collections import defaultdict
 from pathlib import Path
@@ -38,30 +39,18 @@ class NaipSource(RasterSource):
         self.year = year
         self.min_coverage = min_coverage
 
+        self.metadata: dict = {}
+
     def fetch(self, aoi: gpd.GeoDataFrame | None, out_dir: Path) -> list[Path]:
         if aoi is None:
             raise ValueError("NAIP source needs an AOI (bbox or vector file)")
-        import planetary_computer
-        import pystac_client
-
         aoi_geom = aoi.to_crs("EPSG:4326").union_all()
-        catalog = pystac_client.Client.open(STAC_URL, modifier=planetary_computer.sign_inplace)
-        search = catalog.search(
-            collections=["naip"],
-            intersects=aoi_geom.__geo_interface__,
-            datetime=f"{self.year}-01-01/{self.year}-12-31" if self.year else None,
-        )
-        items = list(search.items())
-        if not items:
+        by_year = search_by_year(aoi_geom, self.year)
+        if not by_year:
             raise RuntimeError("no NAIP imagery found for this AOI" + (f" in {self.year}" if self.year else ""))
 
-        by_year: dict[int, list] = defaultdict(list)
-        for it in items:
-            by_year[it.datetime.year].append(it)
-
         def coverage(year: int) -> float:
-            cover = unary_union([shape(i.geometry) for i in by_year[year]])
-            return cover.intersection(aoi_geom).area / aoi_geom.area
+            return _coverage(by_year[year], aoi_geom)
 
         # Most recent year that fully covers the AOI (AOIs on state lines can mix years).
         year = next((y for y in sorted(by_year, reverse=True) if coverage(y) >= self.min_coverage), None)
@@ -72,11 +61,60 @@ class NaipSource(RasterSource):
 
         key = hashlib.sha1(f"{aoi_geom.wkt}|{year}".encode()).hexdigest()[:10]
         out = Path(out_dir) / f"naip_{year}_{key}.tif"
+        # Record when the imagery was actually flown: counts only mean something tied to a date.
+        dates = sorted({i.datetime.date().isoformat() for i in by_year[year]
+                        if shape(i.geometry).intersects(aoi_geom)})
+        self.metadata = {"naip_year": year, "acquisition_dates": dates,
+                         "naip_gsd_m": sorted({i.properties.get("gsd") for i in by_year[year]} - {None}),
+                         "coverage": round(coverage(year), 4)}
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.with_suffix(".json").write_text(json.dumps(self.metadata, indent=2), encoding="utf-8")
         if out.exists():
             log.info("using cached %s", out)
             return [out]
         mosaic_to_aoi([i.assets["image"].href for i in by_year[year]], aoi_geom, out)
         return [out]
+
+
+def search_by_year(aoi_geom_4326, year: int | None = None, start: int | None = None,
+                   end: int | None = None) -> dict[int, list]:
+    """NAIP STAC items intersecting the AOI, grouped by year."""
+    import planetary_computer
+    import pystac_client
+
+    if year:
+        start = end = year
+    dt = f"{start or 2003}-01-01/{end or 2100}-12-31" if (start or end) else None
+    catalog = pystac_client.Client.open(STAC_URL, modifier=planetary_computer.sign_inplace)
+    items = catalog.search(collections=["naip"], intersects=aoi_geom_4326.__geo_interface__, datetime=dt).items()
+    by_year: dict[int, list] = defaultdict(list)
+    for it in items:
+        by_year[it.datetime.year].append(it)
+    return dict(by_year)
+
+
+def _coverage(items: list, aoi_geom) -> float:
+    cover = unary_union([shape(i.geometry) for i in items])
+    return cover.intersection(aoi_geom).area / aoi_geom.area
+
+
+def survey(aoi: gpd.GeoDataFrame, start: int | None = None, end: int | None = None) -> list[dict]:
+    """Every NAIP flight date over the AOI: date, weekday, GSD and the share of the AOI it covers.
+
+    NAIP flies each state on a few days per cycle, so before comparing years check that the
+    dates are comparable (weekday vs weekend, season, resolution).
+    """
+    aoi_geom = aoi.to_crs("EPSG:4326").union_all()
+    rows = []
+    for year, items in sorted(search_by_year(aoi_geom, start=start, end=end).items()):
+        by_date: dict = defaultdict(list)
+        for it in items:
+            by_date[it.datetime.date()].append(it)
+        for d, its in sorted(by_date.items()):
+            rows.append({"year": year, "date": d.isoformat(), "weekday": d.strftime("%a"),
+                         "gsd_m": sorted({i.properties.get("gsd") for i in its} - {None}),
+                         "coverage": round(_coverage(its, aoi_geom), 3)})
+    return rows
 
 
 def mosaic_to_aoi(hrefs: list[str], aoi_geom_4326, out_path: Path) -> Path:

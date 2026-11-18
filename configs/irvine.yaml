@@ -1,0 +1,55 @@
+# Irvine Spectrum parking before / during / after COVID.
+#   aerialdetect naip-dates --bbox -117.760 33.640 -117.730 33.660
+#   aerialdetect run configs/irvine.yaml --set source.year=2020 --set output.dir=outputs/irvine_2020
+#
+# Chosen over Sacramento for its sparse tree cover and large surface lots around office/R&D parks.
+# Every NAIP cycle here is a weekday at 0.6 m; 2020 was flown mid stay-at-home order:
+#   2016-06-02 Thu | 2018-08-21 Tue | 2020-04-24 Fri (lockdown) | 2022-04-25 Mon | 2024-05-06 Mon
+# Caveats: flights span Apr-Aug, and 2022/2024 are Mondays (lighter office days under hybrid work).
+aoi:
+  bbox: [-117.760, 33.640, -117.730, 33.660]   # min_lon, min_lat, max_lon, max_lat
+
+source:
+  type: naip
+  year: 2024            # override per run with --set source.year=...
+
+model:
+  weights: yolo11s-obb.pt
+  gsd: 0.2              # 3x upsampling of 0.6 m NAIP; tuned on Tempe 2025 (see naip_dota.yaml)
+  conf: 0.05            # keep low-confidence boxes; pick the cut afterwards against hand counts
+  device: null
+
+detect:
+  tile_px: 640
+  overlap_px: 128
+  bands: [1, 2, 3]
+  min_area_m2: {small vehicle: 4, plane: 100}
+  max_area_m2: {small vehicle: 30}
+
+analysis:
+  tracts:
+    enabled: true
+    year: 2020
+    count_classes: [small vehicle, large vehicle]
+    footprint_classes: []
+  parking:
+    enabled: true
+    lots_path: data/lots/irvine_osm_parking.gpkg   # OSM amenity=parking fetched 2026-11-17 (scripts/osm_lots_to_gpkg.py); same lots every year
+    vehicle_classes: [small vehicle, large vehicle]
+    m2_per_stall: 30
+    # Lot type = City of Irvine zoning at the lot's centre (current zoning, applied to every year).
+    zoning:
+      url: https://services2.arcgis.com/3mkVbLdbLBFHrfbK/arcgis/rest/services/ZoningDistricts/FeatureServer/20
+      field: ZONING
+      groups:
+        office_rnd: ["5.4", "5.4A", "5.4B", "5.5", "5.5A", "5.5C", "5.5G"]   # General Industrial / Medical & Science: office + R&D parks
+        center_office: ["4.6", "4.7", "4.7C", "4.8"]                 # Irvine Center office/urban commercial towers
+        retail: ["4.2", "4.2D", "4.3", "4.5"]                        # incl. Irvine Spectrum Center (4.5)
+        residential: ["2.2", "2.3", "2.3G", "2.4", "2.4H"]
+        transit_mixed: ["8.1", "8.1B"]
+
+output:
+  dir: outputs/irvine_2024
+  gpkg: results.gpkg
+
+cache_dir: data/cache

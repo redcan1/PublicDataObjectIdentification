@@ -32,3 +32,36 @@ def test_downsampling_drone():
     tiles = plan_tiles(3000, 3000, native_gsd=0.05, model_gsd=0.3, tile_px=640, overlap_px=128)
     assert len(tiles) == 1
     assert tiles[0].out_width == 500
+
+
+def _write_rgb(path, arr):
+    import rasterio
+    from rasterio.transform import from_origin
+
+    with rasterio.open(path, "w", driver="GTiff", width=arr.shape[2], height=arr.shape[1], count=3,
+                       dtype="uint8", crs="EPSG:32611", transform=from_origin(0, 0, 0.6, 0.6)) as dst:
+        dst.write(arr)
+
+
+def test_compute_lut_stretch_and_match(tmp_path):
+    import rasterio
+
+    from aerialdetect.tiling import compute_lut
+
+    rng = np.random.default_rng(0)
+    dull = rng.integers(60, 120, size=(3, 200, 200), dtype=np.uint8)    # dark, low contrast
+    bright = rng.integers(40, 230, size=(3, 200, 200), dtype=np.uint8)  # reference look
+    dull[:, :10, :] = 0                                                 # nodata padding
+    _write_rgb(tmp_path / "dull.tif", dull)
+    _write_rgb(tmp_path / "ref.tif", bright)
+
+    with rasterio.open(tmp_path / "dull.tif") as src:
+        st = compute_lut(src, (1, 2, 3), "stretch")
+        mt = compute_lut(src, (1, 2, 3), "match", str(tmp_path / "ref.tif"))
+    assert st.shape == mt.shape == (3, 256) and st.dtype == np.uint8
+    assert np.all(np.diff(st.astype(int), axis=1) >= 0) and np.all(np.diff(mt.astype(int), axis=1) >= 0)
+    out = st[0][dull[0, 10:]]
+    assert out.min() <= 5 and out.max() >= 250          # padding excluded from the percentiles
+    matched = mt[0][dull[0, 10:]]
+    assert abs(np.percentile(matched, 5) - np.percentile(bright[0], 5)) < 6
+    assert abs(np.percentile(matched, 95) - np.percentile(bright[0], 95)) < 6

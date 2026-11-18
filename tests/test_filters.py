@@ -25,3 +25,13 @@ def test_min_area_drops_car_sized_planes_only():
     out = filter_by_size(_dets(), {"plane": 100}, {})
     assert sorted(zip(out["class_name"], out["area_m2"])) == [
         ("plane", 400.0), ("small vehicle", 14.0), ("swimming pool", 80.0)]
+
+
+def test_dotted_override_reaches_nested_and_new_keys(tmp_path):
+    from aerialdetect.config import load_config
+
+    p = tmp_path / "c.yaml"
+    p.write_text("model: {weights: x.pt}\nsource: {type: naip, year: null}\n", encoding="utf-8")
+    cfg = load_config(p, [("source.year", 2020), ("output.dir", "outputs/y2020")])
+    assert cfg["source"] == {"type": "naip", "year": 2020}
+    assert cfg["output"]["dir"] == "outputs/y2020" and cfg["output"]["gpkg"] == "results.gpkg"

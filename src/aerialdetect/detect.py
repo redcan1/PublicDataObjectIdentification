@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from .geo import raster_gsd
 from .nms import polygon_nms
-from .tiling import Tile, compute_stretch, plan_tiles, read_tile
+from .tiling import Tile, compute_lut, compute_stretch, plan_tiles, read_tile
 
 log = logging.getLogger(__name__)
 
@@ -99,6 +99,7 @@ def detect_raster(
     nms_iou: float = 0.5,
     nms_ios: float = 0.8,
     min_valid_fraction: float = 0.05,
+    normalize: Mapping[str, object] | None = None,
 ) -> gpd.GeoDataFrame:
     """Detect objects in one raster. Output polygons are in the raster's CRS."""
     path = Path(path)
@@ -109,13 +110,17 @@ def detect_raster(
         crs = src.crs
         tiles = plan_tiles(src.width, src.height, native_gsd, model_gsd, tile_px, overlap_px)
         stretch = compute_stretch(src, bands)
+        lut = None
+        if normalize and normalize.get("method"):
+            lut = compute_lut(src, bands, str(normalize["method"]), normalize.get("reference"))
+            log.info("%s: normalize=%s (reference=%s)", path.name, normalize["method"], normalize.get("reference"))
         log.info("%s: %dx%d px @ %.3f m -> %d tiles @ %.3f m",
                  path.name, src.width, src.height, native_gsd, len(tiles), model_gsd)
 
         for start in tqdm(range(0, len(tiles), batch_size), desc=path.name, unit="batch"):
             images, kept = [], []
             for tile in tiles[start:start + batch_size]:
-                img = read_tile(src, tile, bands, stretch)
+                img = read_tile(src, tile, bands, stretch, lut)
                 if (img.max(axis=2) > 0).mean() < min_valid_fraction:
                     continue  # nodata / outside the mosaic
                 images.append(img)

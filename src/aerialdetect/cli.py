@@ -28,6 +28,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("run", help="end-to-end pipeline from a YAML config")
     s.add_argument("config")
+    s.add_argument("--set", dest="overrides", type=_kv, action="append", default=[], metavar="KEY=VALUE",
+                   help="override a config value, e.g. --set source.year=2020 --set output.dir=outputs/x")
+
+    s = sub.add_parser("naip-dates", help="list NAIP flight dates, weekdays and resolution over an AOI")
+    _aoi_args(s)
+    s.add_argument("--start", type=int, help="first year (default: all)")
+    s.add_argument("--end", type=int, help="last year")
 
     s = sub.add_parser("fetch-naip", help="download a NAIP mosaic for an AOI")
     _aoi_args(s)
@@ -104,8 +111,18 @@ def main(argv: list[str] | None = None) -> None:
         from .config import load_config
         from .pipeline import run
 
-        for k, v in run(load_config(args.config)).items():
+        for k, v in run(load_config(args.config, args.overrides)).items():
             print(f"{k}: {v}")
+
+    elif args.cmd == "naip-dates":
+        from .geo import load_aoi
+        from .sources.naip import survey
+
+        rows = survey(load_aoi(args.bbox, args.aoi), args.start, args.end)
+        print(f"{'year':<6}{'date':<12}{'day':<5}{'gsd_m':<8}coverage")
+        for r in rows:
+            gsd = "/".join(f"{g:g}" for g in r["gsd_m"])
+            print(f"{r['year']:<6}{r['date']:<12}{r['weekday']:<5}{gsd:<8}{r['coverage']:.0%}")
 
     elif args.cmd == "fetch-naip":
         from .geo import load_aoi
