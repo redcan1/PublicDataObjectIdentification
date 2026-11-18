@@ -21,3 +21,6 @@ runs/
 
 # OSMnx HTTP cache
 cache/
+
+# fine-tuned weights are kept, via Git LFS (see .gitattributes)
+!models/*.pt
