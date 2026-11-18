@@ -256,6 +256,13 @@ propy arcgis/import_to_gdb.py outputs/tempe_dota/results.gpkg outputs/tempe_dota
 4. For a different sensor, write a `RasterSource` subclass that returns GeoTIFFs. See
    [sources/](src/aerialdetect/sources/).
 
+## Case study: COVID and parking
+
+[docs/covid-parking.md](docs/covid-parking.md) uses this pipeline to measure parking before, during and after
+COVID in Irvine and Sacramento. During the April 2020 lockdown, Irvine Spectrum's parked cars fell to 0.63x of
+their 2018 level, and office-tower lots to about a quarter. It also shows how to fine-tune the detector on
+blind hand counts, which fixes the low recall described below.
+
 ## Known limitations
 
 - **NAIP is a single snapshot** taken in the growing season, every 2–3 years. Occupancy describes that
