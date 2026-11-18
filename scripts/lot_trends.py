@@ -28,15 +28,25 @@ def main() -> None:
     ap.add_argument("--base", type=int, required=True, help="pre-COVID reference year")
     ap.add_argument("--boot", type=int, default=2000)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--min-conf", type=float, default=None,
+                    help="recount vehicles per lot from detections at this confidence (default: run's counts)")
     a = ap.parse_args()
 
     frames = []
     for y in a.years:
-        l = gpd.read_file(Path(a.runs.format(year=y)) / "results.gpkg", layer="parking_lots")
+        gpkg = Path(a.runs.format(year=y)) / "results.gpkg"
+        l = gpd.read_file(gpkg, layer="parking_lots")
         l = l[(l["aoi_frac"] >= 0.99) & (l["parking"] != "street_side")]
+        n = l["n_vehicles"]
+        if a.min_conf is not None:
+            d = gpd.read_file(gpkg, layer="detections")
+            d = d[d["class_name"].isin(["small vehicle", "large vehicle"]) & (d["confidence"] >= a.min_conf)]
+            c = gpd.GeoDataFrame(geometry=d.geometry.centroid, crs=d.crs).to_crs(l.crs)
+            hit = gpd.sjoin(c, l[["lot_id", "geometry"]], predicate="within")
+            n = l["lot_id"].map(hit.groupby("lot_id").size()).fillna(0).astype(int)
         frames.append(pd.DataFrame({"lot_id": l["lot_id"], "lot_type": l["lot_type"], "year": y,
                                     "garage": l["parking"].eq("multi-storey"), "area_m2": l["area_m2"],
-                                    "model": l["n_vehicles"]}))
+                                    "model": n}))
     lots = pd.concat(frames)
     surf = lots[~lots["garage"]]
     n_lots = surf["lot_id"].nunique()
