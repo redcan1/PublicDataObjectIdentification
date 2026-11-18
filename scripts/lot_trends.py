@@ -21,7 +21,7 @@ import pandas as pd
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--runs", required=True)
+    ap.add_argument("--runs", required=True, nargs="+", help="one or more run patterns with {year}; counts are averaged")
     ap.add_argument("--years", type=int, nargs="+", required=True)
     ap.add_argument("--labels", required=True, help="dir with score.csv from score_counts.py")
     ap.add_argument("--score", default="score.csv", help="score file inside --labels")
@@ -34,19 +34,22 @@ def main() -> None:
 
     frames = []
     for y in a.years:
-        gpkg = Path(a.runs.format(year=y)) / "results.gpkg"
-        l = gpd.read_file(gpkg, layer="parking_lots")
-        l = l[(l["aoi_frac"] >= 0.99) & (l["parking"] != "street_side")]
-        n = l["n_vehicles"]
-        if a.min_conf is not None:
-            d = gpd.read_file(gpkg, layer="detections")
-            d = d[d["class_name"].isin(["small vehicle", "large vehicle"]) & (d["confidence"] >= a.min_conf)]
-            c = gpd.GeoDataFrame(geometry=d.geometry.centroid, crs=d.crs).to_crs(l.crs)
-            hit = gpd.sjoin(c, l[["lot_id", "geometry"]], predicate="within")
-            n = l["lot_id"].map(hit.groupby("lot_id").size()).fillna(0).astype(int)
-        frames.append(pd.DataFrame({"lot_id": l["lot_id"], "lot_type": l["lot_type"], "year": y,
-                                    "garage": l["parking"].eq("multi-storey"), "area_m2": l["area_m2"],
-                                    "model": n}))
+        per_run = []
+        for pattern in a.runs:
+            gpkg = Path(pattern.format(year=y)) / "results.gpkg"
+            l = gpd.read_file(gpkg, layer="parking_lots")
+            l = l[(l["aoi_frac"] >= 0.99) & (l["parking"] != "street_side")].set_index("lot_id")
+            n = l["n_vehicles"]
+            if a.min_conf is not None:
+                d = gpd.read_file(gpkg, layer="detections")
+                d = d[d["class_name"].isin(["small vehicle", "large vehicle"]) & (d["confidence"] >= a.min_conf)]
+                c = gpd.GeoDataFrame(geometry=d.geometry.centroid, crs=d.crs).to_crs(l.crs)
+                hit = gpd.sjoin(c, l[["geometry"]].reset_index(), predicate="within")
+                n = pd.Series(l.index.map(hit.groupby("lot_id").size()), index=l.index).fillna(0)
+            per_run.append(n.astype(float))
+        frames.append(pd.DataFrame({"lot_id": l.index, "lot_type": l["lot_type"].values, "year": y,
+                                    "garage": l["parking"].eq("multi-storey").values, "area_m2": l["area_m2"].values,
+                                    "model": pd.concat(per_run, axis=1).mean(axis=1).values}))
     lots = pd.concat(frames)
     surf = lots[~lots["garage"]]
     n_lots = surf["lot_id"].nunique()

@@ -85,6 +85,8 @@ def main() -> None:
     ap.add_argument("--set", nargs=2, action="append", metavar=("LABELS_DIR", "RUNS"), required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--holdout-frac", type=float, default=0.34)
+    ap.add_argument("--folds", type=int, default=0, help="K for K-fold by lot (0 = single --holdout-frac split)")
+    ap.add_argument("--fold", type=int, default=0, help="which fold is validation (0..K-1)")
     ap.add_argument("--seed", type=int, default=3)
     ap.add_argument("--model-gsd", type=float, default=0.2)
     ap.add_argument("--tile", type=int, default=640)
@@ -114,14 +116,25 @@ def main() -> None:
             if m["lot_id"] not in by_type[m["lot_type"]]:
                 by_type[m["lot_type"]].append(m["lot_id"])
         val_lots: list[int] = []
-        carry = 0.0
-        for t in sorted(by_type):
-            ids = sorted(by_type[t])
-            rng.shuffle(ids)
-            carry += len(ids) * a.holdout_frac
-            take = int(carry)
-            carry -= take
-            val_lots += ids[:take]
+        if a.folds:
+            # deal lots of each type round-robin into folds, continuing across types so folds stay balanced
+            k = 0
+            for t in sorted(by_type):
+                ids = sorted(by_type[t])
+                rng.shuffle(ids)
+                for lid in ids:
+                    if k % a.folds == a.fold:
+                        val_lots.append(lid)
+                    k += 1
+        else:
+            carry = 0.0
+            for t in sorted(by_type):
+                ids = sorted(by_type[t])
+                rng.shuffle(ids)
+                carry += len(ids) * a.holdout_frac
+                take = int(carry)
+                carry -= take
+                val_lots += ids[:take]
         split_info[city] = sorted(int(x) for x in val_lots)
 
         dets_cache: dict[int, gpd.GeoDataFrame] = {}
