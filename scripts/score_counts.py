@@ -46,6 +46,7 @@ def main() -> None:
     ap.add_argument("dir")
     ap.add_argument("--runs", required=True)
     ap.add_argument("--match-m", type=float, default=3.0)
+    ap.add_argument("--out", default="score.csv", help="file name written inside the labels dir")
     ap.add_argument("--min-conf", type=float, default=0.0, help="extra confidence cut on top of the run's")
     a = ap.parse_args()
 
@@ -79,7 +80,7 @@ def main() -> None:
                      "capacity_est": None if lot_row is None else lot_row["capacity_est"],
                      "unsure": cid in unsure})
     df = pd.DataFrame(rows)
-    df.to_csv(d / "score.csv", index=False)
+    df.to_csv(d / a.out, index=False)
 
     pd.set_option("display.width", 200)
     tot = df[["hand", "model", "matched"]].sum()
@@ -97,7 +98,7 @@ def main() -> None:
         print(f"  {col} index vs {by.index.min()}: " + "  ".join(f"{yy}:{v / base:.2f}" for yy, v in by[col].items()))
     piv = df.pivot_table(index=["lot_id", "lot_type"], columns="year", values=["hand", "model"], aggfunc="sum")
     print("\nPer lot (hand | model):\n", piv.to_string())
-    print(f"\n-> {d / 'score.csv'}")
+    print(f"\n-> {d / a.out}")
 
 
 if __name__ == "__main__":

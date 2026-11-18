@@ -29,6 +29,9 @@ DEFAULTS: dict[str, Any] = {
         "classes": None,    # optional keep-list of class names; None = keep every class
         "min_area_m2": {},  # optional per-class size filter, e.g. {car: 4}
         "max_area_m2": {},
+        # Radiometric normalisation so years compare like with like:
+        # method: null | "stretch" (per-raster 1-99% stretch) | "match" (histogram-match to `reference` raster)
+        "normalize": {"method": None, "reference": None},
     },
     "analysis": {
         "tracts": {"enabled": False, "year": 2023, "count_classes": [], "footprint_classes": []},

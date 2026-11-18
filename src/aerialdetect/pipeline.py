@@ -30,6 +30,7 @@ def detect_step(rasters: list[Path], predictor: Predictor, names: dict[int, str]
             edge_margin_px=detect_cfg["edge_margin_px"],
             nms_iou=detect_cfg["nms_iou"],
             nms_ios=detect_cfg["nms_ios"],
+            normalize=detect_cfg.get("normalize"),
         )
         for r in rasters
     ]

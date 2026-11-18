@@ -109,11 +109,58 @@ def compute_stretch(
     return np.asarray(lo, dtype="float32"), np.asarray(hi, dtype="float32")
 
 
+def _band_histograms(src: rasterio.io.DatasetReader, bands: tuple[int, ...], size: int = 2048) -> np.ndarray:
+    """(n_bands, 256) pixel-value histograms of a uint8 raster (decimated read, nodata/black excluded)."""
+    factor = max(src.width, src.height) / size
+    out_shape = None
+    if factor > 1:
+        out_shape = (len(bands), max(1, int(src.height / factor)), max(1, int(src.width / factor)))
+    arr = src.read(list(bands), out_shape=out_shape)
+    valid = arr.max(axis=0) > 0  # NAIP pads outside the mosaic with 0 in every band
+    return np.stack([np.bincount(b[valid].ravel(), minlength=256)[:256] for b in arr]).astype("float64")
+
+
+def compute_lut(
+    src: rasterio.io.DatasetReader,
+    bands: tuple[int, ...],
+    method: str,
+    reference: str | None = None,
+    pct: tuple[float, float] = (1, 99),
+) -> np.ndarray:
+    """Per-band 256-entry lookup table that normalises a uint8 raster's radiometry.
+
+    ``stretch``: linear stretch of each band's ``pct`` percentiles to 0..255 (per raster, no reference).
+    ``match``: histogram matching of each band to the same band of ``reference``, so every year's
+    imagery has the reference year's brightness/contrast/colour balance.
+    """
+    if not all(src.dtypes[b - 1] == "uint8" for b in bands):
+        raise ValueError("normalize currently supports uint8 imagery only")
+    h = _band_histograms(src, bands)
+    cdf = np.cumsum(h, axis=1) / np.maximum(h.sum(axis=1, keepdims=True), 1)
+    v = np.arange(256, dtype="float64")
+    if method == "stretch":
+        lut = []
+        for c in cdf:
+            lo = float(np.searchsorted(c, pct[0] / 100))
+            hi = float(np.searchsorted(c, pct[1] / 100))
+            lut.append(np.clip((v - lo) / max(hi - lo, 1.0) * 255.0, 0, 255))
+        return np.rint(np.stack(lut)).astype("uint8")
+    if method == "match":
+        if not reference:
+            raise ValueError("normalize.method=match needs normalize.reference (a raster path)")
+        with rasterio.open(reference) as ref:
+            hr = _band_histograms(ref, bands)
+        cr = np.cumsum(hr, axis=1) / np.maximum(hr.sum(axis=1, keepdims=True), 1)
+        return np.rint(np.stack([np.interp(c, r, v) for c, r in zip(cdf, cr)])).astype("uint8")
+    raise ValueError(f"unknown normalize method: {method!r}")
+
+
 def read_tile(
     src: rasterio.io.DatasetReader,
     tile: Tile,
     bands: tuple[int, ...] = (1, 2, 3),
     stretch: tuple[np.ndarray, np.ndarray] | None = None,
+    lut: np.ndarray | None = None,
 ) -> np.ndarray:
     """Read a tile resampled to the model GSD. Returns an RGB ``(H, W, 3)`` uint8 array."""
     downsampling = tile.window.width > tile.out_width
@@ -130,4 +177,8 @@ def read_tile(
         arr = np.clip(arr * 255.0, 0, 255).astype("uint8")
     elif arr.dtype != np.uint8:
         arr = np.clip(arr, 0, 255).astype("uint8")
+    if lut is not None:
+        nodata = arr.max(axis=0) == 0
+        arr = lut[np.arange(len(arr))[:, None, None], arr]
+        arr[:, nodata] = 0  # keep padding black so empty tiles are still skipped
     return np.ascontiguousarray(np.moveaxis(arr, 0, -1))
